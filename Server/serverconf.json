@@ -1,0 +1,8 @@
+{
+    "ip":"",
+    "port":9999,
+    "minNum":5,
+    "maxNum":1024,
+    "connectNum":100000,
+    "waitTime":1000
+}
