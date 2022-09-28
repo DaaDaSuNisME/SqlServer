@@ -51,7 +51,7 @@ bool Socket::connect(const std::string &ip,int port){//connect is for client
 }
 
 bool Socket::close(){
-    if(this->m_sockfd > 0){
+    if(this->m_sockfd >= 0){
         ::close(this->m_sockfd);
         this->m_sockfd=0;
     }

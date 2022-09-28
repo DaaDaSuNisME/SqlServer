@@ -47,12 +47,12 @@ void SocketHandler::handle(int maxconnection,int timewait){
         for(int i=0;i<num;++i){
             if(this->m_listensocket==this->m_epoller->m_evs[i].data.ptr){
                 //listen event
-                int sockfd=this->m_listensocket->accept();
                 Socket *socket=this->m_socketpool.allocate();
                 if( !socket ){
                     perror("SocketHandler handle listen error:");
-                    break;
+                    continue;
                 }
+                int sockfd=this->m_listensocket->accept();
                 socket->m_sockfd=sockfd;
                 socket->set_non_blocking();
                 this->attach(socket);
