@@ -1,0 +1,54 @@
+# SqlServer
+A Simple SqlServer
+
+项目背景：RFID无线通讯原理的期末课设。
+
+项目需求：校园一卡通：基于RFID无线通讯，实现RFID识别，管理卡片信息等功能。
+
+本项目作为一个简易服务器在校园一卡通项目中， 用于响应客户端的数据库读写请求。
+
+基于 Linux + C++实现了 Linux 上的高并发服务器，能够支持基本项目需求。
+利用 epoll 实现 IO 多路复用。
+利用线程池来并发任务处理。
+使用数据库连接池用于提高高并发情况下的数据库读写效率。
+
+SqlServer完成过程中参考和学习了：
+oldjun老师的 yazi 服务器框架 : https://github.com/oldjun/yazi
+大丙老师的Linux，网络，并发的相关内容 ：https://subingwen.cn
+
+使用到的动态库有:
+mysql8.0 的动态库 libmysqlclient.lib
+C++ 文件解析 libjsoncpp.a   来源：https://github.com/open-source-parsers/jsoncpp 
+
+
+
+Class Server是本工程的总开关，主要功能有读取并解析serverconf.json文件，并用于在Class Server 中对SocketHandler，TaskDispacher等全局单例类的初始化。
+
+Class  Socket是单一Socket的功能的封装，使用成员函数实现了Socket相关功能的简易API封装，比如accept连接函数，recv接受函数，send发送函数，以及一些set用于设置socket的函数，达到存储Socket相关信息，以及使用Sokect对应的相关功能的目的。
+
+Class ServerSocket是Socket类的子类，继承自Socket，主要功能是完成了基于当前服务器对于Sokect的初始化。在ServerSocket的初始化过程中对Socket连接的一些参数根据当前Serverconf.json中的内容进行设定 。
+
+Class SocketHandler是一个接口类，用于创建和管理监听socket以及大量的通信socket，并且使用Epoller来实现socket内和缓冲区的监听，在SocketHandler类中的handler函数中使用Epoller监听到就绪的socket来完成Task实例化对象的初始化以及将Task交给TaskDispacher来进行下一步的处理。listen是根据listensocket来设置监听，attach和detach用于添加和取消socket在epoll中的监听，remove用于将使用完成的socket重新加入到成员变量 对象池socketpool 当中（对象池用于维护一系列对象，实现了取出和放回的功能，socket对象池中存储着大量的未指定socket文件描述符的socket对象）。
+
+Class Epoller是对于epoll内核监听符epfd的封装，包含了add，del，mod等函数，用于在SocketHandler类中对于添加删除修改等功能的二次封装，wait函数用于阻塞监听内核缓冲区等.对于add函数，在添加epoll内核缓冲区的检测对象时，需要传入epoll_event对象（ev）的引用，而ev用于存储有关检测的socket文件描述符的相关信息（这里存储的是class ServerSocket 对象的指针，通过class ServerSocket对象来获取socket相关信息以及访问socket）以及 该检测时间的相关设置 。以至于当检测到socket对象的内核缓冲区有消息时，返回对应的ev的引用，可以通过饮用中设置的clas socket的指针来访问和操作当前socket。
+
+Class TaskDiapacher，该类是一个接口类，用于对ThreadPool进行初始化，指定线程池容量范围。以及用于将已经初始化了的Task对象添加到ThreadPool线程池中，在SocketHandler函数中被初始化并使用 。
+
+Class Task，作为EchoTask和WorkTask的子类来使用，为什么将Task放入Thread文件夹，而EchoTask和WorkTask这两个子类放入Task文件夹，因为Task类是一个无差异的类，作为纯虚基类不实现run和destroy这些方法，而是用于存储Task任务执行时所需要的一些必要的数据和变量，且Task类将与TaskQueue类，ThreadPool类一起来形成线程池的内容。因此将其放入Thread文件夹中，而 EchoTask和WorkTask这两个子类中的都是具有差异化的内容。
+
+Class WorkTask，继承于Task类，在虚函数run（）中定义自己的工作流程和任务，WorkTask的任务是用于接受来自客户端的信息，根据客户端的请求来通过调用MySqlPool数据库连接池获取MySqlConn数据库链接对象，通过链接对象来对数据库进行读写访问。完成读写访问之后再根据结果选择是否向客户端回传消息。在EchoTask中 run函数用于测试Socket通讯是否正常。
+
+Class TaskFactory，该类是Class Task的工厂模式类，用于生产新的Task任务。
+
+Class TaskQueue这个类用于实现Task任务的管理，主要使用到add_task，get_task，以及Task_number这些功能，用于获取任务，添加任务，以及获取任务总数（用于ThreadPool线程池来管理线程数量） 。
+
+Class ThreadPool线程池，manager函数用于动态管理线程池中线程数量，通过一些alive_num，busy_num等成员变量用于管理ThreadPool线程池的运行。work函数用于取出TaskQueue队列中的Task来执行，线程池中的Task任务仅执行。
+
+Class MysqlConn 封装了单个mysql连接的所有功能，包括query，update，用于读取query返回结果的value，next以及一些设置等等，整个MysqlConn类将单一数据库连接的所有操作封装起来。
+
+Class MysqlPool 是一个数据库连接池，通过解析 dbconf.json 供MysqlPool数据库连接池在初始化的时候使用。minSize和maxSize用于produceConnection和deleteConnection动态维护数据库连接池中连接的数量，condi_variable和m_mtx用于实现数据库连接池在多线程任务中的并发，给connectQueue队列加锁。
+
+
+可能的后续优化思路:
+在线程池每个线程执行过程中，需要执行数据库读写操作，而线程就需要等待数据库读写操作完成之后，再决定是否需要数据回传，或者需要回传哪些数据，那么相当于 接受客户端信息->获取MysqlConn对象->进行数据库读写操作->回传客户端信息 这一系列操作在程序中是串行进行的，因此其中每一步如果出现了阻塞的情况，那么该线程就会被挂起，从而占用资源影响性能（如，上述内容中处理Task的Threadpool的最大线程数量是固定的，如果线程长时间被阻塞，那么可能导致出现其他用户无法连接到客户端这样的问题）。优化思路是将接受客户端信息，读写数据库，回传客户端信息这三个任务分开，每个任务使用一个线程池来进行维护，及其处于线程因为一些原因进入阻塞状态，也不会占用过多的资源。
+
